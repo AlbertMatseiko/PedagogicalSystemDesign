@@ -125,3 +125,7 @@ minikube service fastapi-service --namespace=store-config --url 127.0.0.1:4300
 ```bash
 minikube delete --all --purge
 ```
+
+col-strat-api-collection1337-1.m1.pg-prod.tcsbank.ru:5432
+
+application-secrets/prod/postgre/col_strat_api

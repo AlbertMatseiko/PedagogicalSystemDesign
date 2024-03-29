@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: fastapi-service
-  namespace: store-config
+  namespace: col-strat-core
 spec:
   selector:
     app: fastapi-app
@@ -10,15 +10,22 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8000
-  type: LoadBalancer
+  type: ClusterIP #LoadBalancer
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fastapi-deployment
-  namespace: store-config
+  namespace: col-strat-core
 spec:
-  replicas: 1
+  # added
+  #serviceAccountName: default
+  #automountServiceAccountToken: true
+  #securityContext:
+  #  fsGroup: 2049
+  #terminationGracePeriodSeconds: 90
+
+  replicas: 2
   selector:
     matchLabels:
       app: fastapi-app
@@ -26,24 +33,65 @@ spec:
     metadata:
       labels:
         app: fastapi-app
+      annotations:
+        vault.security.banzaicloud.io/vault-addr: https://vault.tcsbank.ru/
+        vault.security.banzaicloud.io/vault-path: k8s__ix_m2_prod2
+        vault.security.banzaicloud.io/vault-role: collection1337__k8s 
     spec:
+      # added
+      volumes:
+        - name: emptytmp
+          emptyDir: {}
       containers:
       - name: web
-        image: store
-        imagePullPolicy: Never
+        image: docker-hosted.artifactory.tcsbank.ru/collection1337/store:123
+        # imagePullPolicy: Never
         command: ["/bin/sh"]
         args: ["-c", "poetry run store"]
         ports:
         - containerPort: 8000
-        envFrom:
-        - secretRef:
-            name: fastapi-secret
+        env:
+          - name: STORE_DEBUG
+            value: "True"
+          - name: STORE_URL
+            value: vault:collection1337/data/application-secrets/prod/postgre/col_strat_api:url
+          - name: STORE_SERVE_PORT
+            value: "8000"
+          - name: STORE_USERNAME
+            value: vault:collection1337/data/application-secrets/prod/postgre/col_strat_api:username
+          - name: STORE_DB_NAME
+            value: vault:collection1337/data/application-secrets/prod/postgre/col_strat_api:db_name
+          - name: STORE_PASSWORD
+            value: vault:collection1337/data/application-secrets/prod/postgre/col_strat_api:password
         resources:
           requests:
-            cpu: "100m"
-            memory: "100Mi"
+            cpu: "125m"
+            memory: "512Mi"
           limits:
-            cpu: "500m"
-            memory: "500Mi"
+            cpu: "125m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10  
+        securityContext:
+            runAsUser: 2049
+            runAsGroup: 2049
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+        
+        # added
+        volumeMounts:
+            - name: emptytmp
+              mountPath: "/tmp"
       # imagePullSecrets:
       # - name: regcred
